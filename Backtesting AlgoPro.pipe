@@ -94,6 +94,9 @@ TT_5 = '● FIXED % ━ Fixed SL/TP in percent.' + '\n'
 // —————— Main Inputs
 groupset         = '➤ ＭＡＩＮ  ＳＥＴＴＩＮＧＳ'
 ext_source_      = input.source (close,           ' 𝐄𝐱𝐭𝐞𝐫𝐧𝐚𝐥 𝐒𝐨𝐮𝐫𝐜𝐞   ',    group=groupset, inline='esrc', tooltip=TT_1)
+exit_signal_source = input.source(close, "External Exit Signal", group=groupset, inline='esrc', tooltip="Connect your exit signal here (1=exit, 0=no exit)")
+external_sl_price = input.source(close, "External Stop Loss Price", group=groupset, inline='esrc', tooltip="Connect your external stop loss price (numeric series)")
+
 bullDeal         = input.bool   (true,            ' Long Deals    ',       group=groupset, inline='deal')    
 bearDeal         = input.bool   (true,            ' Short Deals     ',     group=groupset, inline='deal')   
 sessionClose     = input.bool   (false,           ' Close at Session End', group=groupset, inline='deal', tooltip=TT_2)
@@ -103,7 +106,7 @@ reEntryDeal      = input.bool   (false,           ' ReEntry Deal  ',      
 reOpenDeal       = input.bool   (false,           ' ReOpen Deal',          group=groupset, inline='ord2', tooltip=TT_4)
  
 tpType           = input.string ('R:R',           ' 𝐓𝐚𝐤𝐞 𝐏𝐫𝐨𝐟𝐢𝐭',          group=groupset, inline='type', options=['None', '𝗧.ᴠᴏʟᴀᴛʏ', 'R:R', 'HH / LL'])
-slType           = input.string ('[1] S.ᴠᴏʟᴀᴛʏ',  ' 𝐒𝐭𝐨𝐩 𝐋𝐨𝐬𝐬 ',           group=groupset, inline='type', options=['None', '[1] S.ᴠᴏʟᴀᴛʏ', '[2] Trailing', '[3] Fast Trail', '[4] Volatility', '[5] Chandelier', '[6] Activator', '[7] MA', '[8] SAR', '[9] LO / HI'], tooltip=TT_5)
+slType           = input.string ('[1] S.ᴠᴏʟᴀᴛʏ',  ' 𝐒𝐭𝐨𝐩 𝐋𝐨𝐬𝐬 ',           group=groupset, inline='type', options=['None', '[1] S.ᴠᴏʟᴀᴛʏ', '[2] Trailing', '[3] Fast Trail', '[4] Volatility', '[5] Chandelier', '[6] Activator', '[7] MA', '[8] SAR', '[9] LO / HI', '[10] External'], tooltip=TT_5)
 
 grouptakes       = '                    ➤ Ｔａｋｅ Ｐｒｏｆｉｔ Ｌｅｖｅｌｓ'
 ontake1          = input.bool   (false,           'ᵀ¹',                   group=grouptakes, inline='take1')
@@ -370,6 +373,9 @@ outTrade     = strategy.opentrades==0
 bull        := ext_source_ == close ? ta.crossover (ta.ema(close, 15), ta.ema(close, 100)) : bull
 bear        := ext_source_ == close ? ta.crossunder(ta.ema(close, 15), ta.ema(close, 100)) : bear
 
+plot(bull ? 1 : 0, title="Bull Signal", color=color.green, style=plot.style_stepline, display=display.data_window)
+plot(bear ? 1 : 0, title="Bear Signal", color=color.red, style=plot.style_stepline, display=display.data_window)
+
 // —————— Entry Signal
 trend        = 0
 signal       = 0
@@ -483,6 +489,9 @@ switch slType
         LoStop   = ta.lowest (source, LoHi)
         slPrice := goLong ? LoStop : goShort ? HiStop : slPrice
 
+    '[10] External' =>      // —————— External Stop
+        slPrice := not na(external_sl_price) ? external_sl_price : slPrice
+
 slPrice := goLong and slPrice > low and slPrice < high ? low : goShort and slPrice > low and slPrice < high ? high : slPrice // Fix for when source+stop can be calculated inside candle
 
 
@@ -584,9 +593,24 @@ if closeEarly > 0
     if barsBelowEntry >= closeEarly and (not DynamicStops or DynamicStops and stopcheck)
         strategy.close(ID, 'Close Early')
 
+// Exit on external signal
+exit_now = not na(exit_signal_source) and exit_signal_source != 0
+if exit_now and inTrade
+    strategy.close(ID, comment="External Exit Signal")
+
 // ———————————————————————————————————————————————————————————————————————————————————————————————————————————————————————— \\
 // —————— Entry to Trade
 sizePos = math.abs(eqty(slPrice, entry))
+
+//
+plot(goLong ? 1 : 0, title="Go Long Signal", color=color.green, style=plot.style_stepline, display=display.data_window)
+plot(goShort ? 1 : 0, title="Go Short Signal", color=color.red, style=plot.style_stepline, display=display.data_window)
+plot(signal, title="Signal", color=color.blue, style=plot.style_stepline, display=display.data_window)
+plot(bullDeal ? 1 : 0, title="Bull Deal Enabled", color=color.aqua, style=plot.style_stepline, display=display.data_window)
+plot(bearDeal ? 1 : 0, title="Bear Deal Enabled", color=color.fuchsia, style=plot.style_stepline, display=display.data_window)
+plot(OkToTrade ? 1 : 0, title="Ok To Trade", color=color.orange, style=plot.style_stepline, display=display.data_window)
+//
+
 if goLong
     ID := 'Long'
     inTrade := true
