@@ -107,6 +107,7 @@ reOpenDeal       = input.bool   (false,           ' ReOpen Deal',          gro
  
 tpType           = input.string ('R:R',           ' 𝐓𝐚𝐤𝐞 𝐏𝐫𝐨𝐟𝐢𝐭',          group=groupset, inline='type', options=['None', '𝗧.ᴠᴏʟᴀᴛʏ', 'R:R', 'HH / LL'])
 slType           = input.string ('[1] S.ᴠᴏʟᴀᴛʏ',  ' 𝐒𝐭𝐨𝐩 𝐋𝐨𝐬𝐬 ',           group=groupset, inline='type', options=['None', '[1] S.ᴠᴏʟᴀᴛʏ', '[2] Trailing', '[3] Fast Trail', '[4] Volatility', '[5] Chandelier', '[6] Activator', '[7] MA', '[8] SAR', '[9] LO / HI', '[10] External'], tooltip=TT_5)
+//maxLoss          = input.int    (0,               'Max Loss Point',        group=groupset, inline='type', minval=0)
 
 grouptakes       = '                    ➤ Ｔａｋｅ Ｐｒｏｆｉｔ Ｌｅｖｅｌｓ'
 ontake1          = input.bool   (false,           'ᵀ¹',                   group=grouptakes, inline='take1')
@@ -200,6 +201,33 @@ FiltType9OB      = input.int    (75,              '',                           
 FiltType10       = input.bool   (false,           '10. MA',                                           group=groupsignal, inline='FT10')
 FiltType10MAType = input.string ('[6] SMA',           '',                                                 group=groupsignal, inline='FT10', options=['ALMA', '[2] EMA', 'HMA', 'RMA', '[6] SMA', 'VWMA', 'WMA'])
 FiltType10Len    = input.int    (200,             '',                                                 group=groupsignal, inline='FT10', minval=1, tooltip='MA Type, MA Source, MA Length\nLong = close > MA\nShort = close < MA')
+FiltType11 = input.bool(false, '11. Choppiness Index', group=groupsignal, inline='FT11')
+// === Choppiness Index Inputs ===
+CHOP_length   = input.int(14, title="Chop Length", group=groupsignal, inline="FT11")
+//CHOP_signal   = input.int(3, title="CI Signal", group=groupsignal, inline="FT11")
+CHOP_choppy   = input.float(62, title="Choppy Condition Threshold", group=groupsignal, inline="FT11")
+//CHOP_midLine  = input.float(50, title="Chop MidLine", group=groupsignal, inline="FT11")
+// === Squeeze Index Inputs ===
+FiltType12 = input.bool(false, '12. Squeeze Index', group=groupsignal, inline='FT12')
+conv_SQ = input.int(50, 'Squeeze Conv Factor', group=groupsignal, inline='FT12')
+length_SQ = input.int(20, 'Squeeze Length', group=groupsignal, inline='FT12')
+sqz_SQ = input.int(80, 'Squeeze Condition Threshold', group=groupsignal, inline='FT12')
+src_SQ = close
+FiltType13 = input.bool(false, '13. Squeeze Momentum SQZ On', group=groupsignal, inline='FT13')
+// === Squeeze Momentum Filter (SQZMOM) ===
+s_length   = input.int(20, title="SQZMOM BB Length", group=groupsignal, inline="SQZMOM")
+s_mult     = input.float(3.0, title="SQZMOM BB MultFactor", group=groupsignal, inline="SQZMOM")
+s_lengthKC = input.int(20, title="SQZMOM KC Length", group=groupsignal, inline="SQZMOM")
+s_multKC   = input.float(2.25, title="SQZMOM KC MultFactor", group=groupsignal, inline="SQZMOM")
+s_useTR    = input.bool(true, title="SQZMOM Use TrueRange (KC)", group=groupsignal, inline="SQZMOM")
+//=== Bollinger Bands Trading Range ===
+FiltType14 = input.bool(false, '14. Bollinger Bands Trading Range', group=groupsignal, inline='FT14')
+bb_length = input.int(20, title="BB Length", group=groupsignal, inline='FT14')
+bb_mult   = input.float(3.0, title="BB StdDev", group=groupsignal, inline='FT14')
+// === User input for enabling/disabling filter and threshold ===
+FiltType15 = input.bool(false, title="15. Enable FiltType14 Session Move Filter", group=groupsignal, inline='FT15')
+thresholdPoints = input.int(160, minval=1, title="Threshold Points", group=groupsignal, inline='FT15')
+
 
 // —————— Filter 1: ADX
 [dip, dim, adx] = ta.dmi(FiltType1Len, FiltType1Smt)
@@ -240,12 +268,94 @@ Filter9Short    = FiltType9 ? not RsiOS : true
 Filter10Ma      = FiltType10 ? MA(FiltType10MAType, close, FiltType10Len) : 0.
 Filter10Long    = FiltType10 ? close > Filter10Ma : true
 Filter10Short   = FiltType10 ? close < Filter10Ma : true
+// —————— Filter 11: Choppiness Index Calculation (from your provided indicator) ===
+tr = ta.tr
+trueRange = ta.tr
+highestHigh = ta.highest(math.max(high, close[1]), CHOP_length)
+lowestLow = ta.lowest(math.min(low, close[1]), CHOP_length)
+
+cib = ((math.log(math.sum(trueRange, CHOP_length) / (highestHigh - lowestLow)) / math.log(10)) / (math.log(CHOP_length) / math.log(10))) * 100
+
+Filter11Long  = FiltType11 ? (cib < CHOP_choppy) : true
+Filter11Short = FiltType11 ? (cib < CHOP_choppy) : true
+// —————— Filter 12: Squeeze Index Calculation ===
+var float max_SQ = na
+var float min_SQ = na
+max_SQ := na(max_SQ[1]) ? src_SQ : math.max(src_SQ, max_SQ[1] - (max_SQ[1] - src_SQ) / conv_SQ)
+min_SQ := na(min_SQ[1]) ? src_SQ : math.min(src_SQ, min_SQ[1] + (src_SQ - min_SQ[1]) / conv_SQ)
+
+diff_SQ = math.log(max_SQ - min_SQ)
+psi_SQ = -50 * ta.correlation(diff_SQ, bar_index, length_SQ) + 50
+
+// === Squeeze Index Filter Logic ===
+Filter12Long  = FiltType12 ? (psi_SQ < sqz_SQ) : true
+Filter12Short = FiltType12 ? (psi_SQ < sqz_SQ) : true
+// —————— Filter 13: Squeeze Momentum Filter (SQZMOM) ===
+s_basis    = ta.sma(close, s_length)
+s_dev      = s_mult * ta.stdev(close, s_length)
+s_upperBB  = s_basis + s_dev
+s_lowerBB  = s_basis - s_dev
+
+s_ma       = ta.sma(close, s_lengthKC)
+s_range    = s_useTR ? ta.tr : (high - low)
+s_rangema  = ta.sma(s_range, s_lengthKC)
+s_upperKC  = s_ma + s_rangema * s_multKC
+s_lowerKC  = s_ma - s_rangema * s_multKC
+
+sqzOn  = (s_lowerBB > s_lowerKC) and (s_upperBB < s_upperKC)
+sqzOff = (s_lowerBB < s_lowerKC) and (s_upperBB > s_upperKC)
+noSqz  = (sqzOn == false) and (sqzOff == false)
+
+plot(s_lowerBB > s_lowerKC ? 1 : 0, title="s_lowerBB > s_lowerKC", color=color.green, display=display.data_window)
+plot(s_upperBB < s_upperKC ? 1 : 0, title="s_upperBB < s_upperKC", color=color.red, display=display.data_window)
+plot((s_lowerBB > s_lowerKC) and (s_upperBB < s_upperKC) ? 1 : 0, title="Squeeze On Condition", color=color.blue, display=display.data_window)
+plot((s_lowerBB > s_lowerKC) or (s_upperBB < s_upperKC) ? 1 : 0, title="Any Squeeze Side", color=color.purple, display=display.data_window)
+
+//Filter13Long  = FiltType13 ? (noSqz or not sqzOn) : true
+//Filter13Short = FiltType13 ? (noSqz or not sqzOn) : true
+
+Filter13Long  = FiltType13 ? not sqzOn : true
+Filter13Short = FiltType13 ? not sqzOn : true
+
+// Plot for data window debugging
+plot(sqzOn ? 1 : 0, title="sqzOn", color=color.white, display=display.data_window)
+plot(Filter13Long ? 1 : 0, title="Filter13Long", color=color.green, display=display.data_window)
+plot(Filter13Short ? 1 : 0, title="Filter13Short", color=color.red, display=display.data_window)
+
+// —————— Filter 14: Bollinger Bands Trading Range ===
+bb_basis  = ta.sma(close, bb_length)
+bb_dev    = bb_mult * ta.stdev(close, bb_length)
+bb_upper  = bb_basis + bb_dev
+bb_lower  = bb_basis - bb_dev
+
+Filter14Long  = FiltType14 ? (close < bb_upper) : true
+Filter14Short = FiltType14 ? (close > bb_lower) : true
+
+// —————— Filter 15: User input for enabling/disabling filter and threshold ===
+// === Get daily high/low for the current day ===
+todayLow  = request.security(syminfo.tickerid, "D", low)
+todayHigh = request.security(syminfo.tickerid, "D", high)
+
+// === Session open time: 09:15 ===
+sessionHour = 9
+sessionMinute = 15
+sessionStart = timestamp("GMT+8", year, month, dayofmonth, sessionHour, sessionMinute)
+inSession = (time >= sessionStart)
+
+// === FiltType15 filter logic ===
+// Block long if current bar's low is thresholdPoints above today's low during session
+blockLong_Filt15  = (low - todayLow) >= thresholdPoints and inSession and FiltType15
+// Block short if current bar's high is thresholdPoints below today's high during session
+blockShort_Filt15 = (todayHigh - high) >= thresholdPoints and inSession and FiltType15
+
+Filter15Long  = not blockLong_Filt15
+Filter15Short = not blockShort_Filt15
 
 // —————— Assemble Filters
 FilterLongOK    = Filter1Long and Filter2Long and Filter3Long and Filter4Long and Filter5Long
- and Filter6Long and Filter7Long and Filter8Long and Filter9Long and Filter10Long
+ and Filter6Long and Filter7Long and Filter8Long and Filter9Long and Filter10Long and Filter11Long and Filter12Long and Filter13Long and Filter14Long and Filter15Long
 FilterShortOK   = Filter1Short and Filter2Short and Filter3Short and Filter4Short and Filter5Short
- and Filter6Short and Filter7Short and Filter8Short and Filter9Short and Filter10Short
+ and Filter6Short and Filter7Short and Filter8Short and Filter9Short and Filter10Short and Filter11Short and Filter12Short and Filter13Short and Filter14Short and Filter15Short
 
 // —————— Filter 0: Inversion Filter
 FilterLongOK   := FiltType0 ? FilterShortOK : FilterLongOK
@@ -274,6 +384,7 @@ riskPerc                = input.int    (10,              '     ​​E
 riskValue               = input.float  (5,               '     RISK %',       group=grouprisk, inline='.', minval=0, step=0.1)
 riskCntr                = input.int    (1,               '     ​​CONTRACTS',    group=grouprisk, inline=',', minval=1)
 riskSize                = input.float  (1,               '     ​SIZE',         group=grouprisk, inline=',', minval=0)
+maxStopLossPoint        = input.float  (0, title="Max Stop Loss (points)",    group=grouprisk, inline=',', minval=0)
 
 // —————— Order Size
 capital = strategy.equity
@@ -490,7 +601,20 @@ switch slType
         slPrice := goLong ? LoStop : goShort ? HiStop : slPrice
 
     '[10] External' =>      // —————— External Stop
-        slPrice := not na(external_sl_price) ? external_sl_price : slPrice
+        //slPrice := not na(external_sl_price) ? external_sl_price : slPrice
+        // Ensure maxStopLossPoint is greater than 0 and use close as Entry price.
+        // If external_sl_price is provided (not na):
+        //   - For a long position (goLong):
+        //       Use the higher value between external_sl_price and (close - maxStopLossPoint) 
+        //       (This ensures the stop loss for long is never farther than maxStopLossPoint below the close price.)
+        //   - For a short position (goShort):
+        //       Use the lower value between external_sl_price and (close + maxStopLossPoint)
+        //       (This ensures the stop loss for short is never farther than maxStopLossPoint above the close price.)
+        //   - If neither goLong nor goShort is true, just use external_sl_price as is.
+        // If external_sl_price is not provided (na), retain the previous slPrice.
+        // Only apply clamping if maxStopLossPoint > 0, otherwise use external_sl_price as is.
+
+        slPrice := not na(external_sl_price) and maxStopLossPoint > 0 ? ( goLong  ? math.max(external_sl_price, close - maxStopLossPoint) : goShort ? math.min(external_sl_price, close + maxStopLossPoint) : external_sl_price ) : not na(external_sl_price) ? external_sl_price : slPrice
 
 slPrice := goLong and slPrice > low and slPrice < high ? low : goShort and slPrice > low and slPrice < high ? high : slPrice // Fix for when source+stop can be calculated inside candle
 
